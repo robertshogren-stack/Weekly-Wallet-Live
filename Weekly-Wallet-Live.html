@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>Ledger — Weekly Budget</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js" defer onerror="window.__tesseractFailed = true;"></script>
+<style>
+  :root{
+    --navy: #142A3D;
+    --navy-deep: #0D1D2B;
+    --paper: #EFE9DC;
+    --paper-line: #D9D0BC;
+    --coral: #C1443C;
+    --sage: #5C7F63;
+    --gold: #B8912F;
+    --ink: #22201B;
+    --ink-soft: #6B6558;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background: var(--navy-deep);
+    font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    color: var(--ink);
+    min-height:100vh;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .app{
+    max-width:480px;
+    margin:0 auto;
+    min-height:100vh;
+    background: var(--paper);
+    background-image:
+      repeating-linear-gradient(var(--paper) 0 27px, var(--paper-line) 27px 28px);
+    background-attachment: local;
+    position:relative;
+  }
+  header{
+    background: var(--navy);
+    color: var(--paper);
+    padding: 22px 20px 26px;
+    position: sticky;
+    top:0;
+    z-index:5;
+    border-bottom: 3px double var(--gold);
+  }
+  header h1{
+    margin:0;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  header .week{
+    margin-top:4px;
+    font-family: 'SF Mono', 'Courier New', monospace;
+    font-size: 12px;
+    color: #C7CDD4;
+  }
+  main{
+    padding: 18px 16px 100px;
+  }
+  .category{
+    background: #FBF8F1;
+    border: 1px solid var(--paper-line);
+    border-radius: 3px;
+    padding: 16px 16px 14px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+  }
+  .category-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom: 10px;
+  }
+  .category-name{
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .category-remaining{
+    font-family: 'SF Mono', 'Courier New', monospace;
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .remaining-ok{ color: var(--sage); }
+  .remaining-low{ color: var(--gold); }
+  .remaining-over{ color: var(--coral); }
+  .bar-track{
+    height: 8px;
+    background: var(--paper-line);
+    border-radius: 4px;
+    overflow:hidden;
+    margin-bottom: 8px;
+  }
+  .bar-fill{
+    height:100%;
+    border-radius:4px;
+    transition: width 0.4s ease;
+  }
+  .category-sub{
+    display:flex;
+    justify-content:space-between;
+    font-family: 'SF Mono', 'Courier New', monospace;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .category-actions{
+    display:flex;
+    gap:8px;
+    margin-top:12px;
+  }
+  .btn{
+    flex:1;
+    border:none;
+    border-radius: 3px;
+    padding: 10px 8px;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .btn-scan{ background: var(--navy); color: var(--paper); }
+  .btn-manual{ background: transparent; color: var(--navy); border: 1px solid var(--navy); }
+  .btn-edit{
+    background:none;
+    border:none;
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 12px;
+    text-decoration: underline;
+    cursor:pointer;
+    padding:0;
+  }
+  .add-category-row{
+    text-align:center;
+    margin: 6px 0 20px;
+  }
+  .add-category-row button{
+    background:none;
+    border: 1px dashed var(--ink-soft);
+    color: var(--ink-soft);
+    border-radius: 3px;
+    padding: 10px 16px;
+    font-family: inherit;
+    font-size: 13.5px;
+    cursor:pointer;
+  }
+  .history{
+    margin-top: 8px;
+  }
+  .history h2{
+    font-size: 14px;
+    letter-spacing: 0.3px;
+    color: var(--ink-soft);
+    font-weight:600;
+    margin: 24px 0 10px;
+    border-bottom: 1px solid var(--paper-line);
+    padding-bottom: 6px;
+  }
+  .txn{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding: 9px 0;
+    border-bottom: 1px dotted var(--paper-line);
+    font-size: 14px;
+  }
+  .txn-info .txn-cat{ font-weight:600; }
+  .txn-info .txn-date{ font-size:11.5px; color:var(--ink-soft); font-family:'SF Mono', monospace; }
+  .txn-amt{ font-family:'SF Mono', monospace; font-weight:600; }
+  .txn-del{
+    background:none;border:none;color:var(--coral);font-size:12px;
+    margin-left:10px; cursor:pointer; text-decoration:underline;
+  }
+  .empty{
+    text-align:center;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    padding: 20px 10px;
+  }
+
+  /* Modal */
+  .overlay{
+    position:fixed; inset:0; background: rgba(13,29,43,0.55);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index: 50;
+  }
+  .sheet{
+    width:100%; max-width:480px;
+    background: var(--paper);
+    border-radius: 14px 14px 0 0;
+    padding: 22px 20px calc(24px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.3);
+    max-height: 85vh;
+    overflow-y:auto;
+  }
+  .sheet h3{
+    margin: 0 0 16px;
+    font-size: 18px;
+  }
+  .field{ margin-bottom: 14px; }
+  .field label{
+    display:block; font-size:12.5px; color: var(--ink-soft); margin-bottom:5px;
+  }
+  .field input, .field select{
+    width:100%;
+    padding: 11px 10px;
+    border: 1px solid var(--paper-line);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 15px;
+    background: #FBF8F1;
+    color: var(--ink);
+  }
+  .sheet-actions{
+    display:flex; gap:10px; margin-top: 18px;
+  }
+  .sheet-actions .btn{ padding: 12px 8px; }
+  .btn-cancel{ background: none; color: var(--ink-soft); border: 1px solid var(--paper-line); }
+  .btn-confirm{ background: var(--navy); color: var(--paper); }
+  .scan-status{
+    text-align:center; padding: 26px 10px;
+    color: var(--ink-soft); font-size: 14px;
+  }
+  .scan-status .dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%;
+    background: var(--gold); margin: 0 3px; animation: pulse 1s infinite ease-in-out;
+  }
+  .scan-status .dot:nth-child(2){ animation-delay: 0.15s; }
+  .scan-status .dot:nth-child(3){ animation-delay: 0.3s; }
+  @keyframes pulse{ 0%,80%,100%{opacity:0.25;} 40%{opacity:1;} }
+  .receipt-preview{
+    width:100%; max-height:180px; object-fit:cover;
+    border-radius:4px; margin-bottom:14px; border:1px solid var(--paper-line);
+  }
+  .detected-note{
+    font-size:12px; color: var(--sage); margin-top:-8px; margin-bottom:14px;
+  }
+  .detected-note.warn{ color: var(--coral); }
+  footer.tip{
+    text-align:center; padding: 10px 20px 30px;
+    color: var(--ink-soft); font-size: 11.5px;
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <h1>Ledger</h1>
+    <div class="week" id="weekLabel">Loading week…</div>
+  </header>
+  <main id="main">
+    <div class="empty">Loading your budget…</div>
+  </main>
+</div>
+
+<input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+
+<script>
+const STORE_KEY = 'ledger:categories';
+const TXN_KEY = 'ledger:transactions';
+const WEEK_KEY = 'ledger:week-start';
+const HISTORY_KEY = 'ledger:week-history';
+const MAX_HISTORY_WEEKS = 5;
+
+let categories = [];
+let transactions = [];
+let weekHistory = [];
+let weekStart = null;
+let pendingCategoryId = null;
+let pendingScanDataUrl = null;
+let syncUrl = null;
+let syncing = false;
+
+// ---------- Safe local storage (falls back to memory if the browser blocks storage) ----------
+const memoryStore = {};
+function safeLocalGet(key){
+  try{ return localStorage.getItem(key); }
+  catch(e){ return Object.prototype.hasOwnProperty.call(memoryStore, key) ? memoryStore[key] : null; }
+}
+function safeLocalSet(key, value){
+  try{ localStorage.setItem(key, value); }
+  catch(e){ memoryStore[key] = value; }
+}
+function safeLocalRemove(key){
+  try{ localStorage.removeItem(key); }
+  catch(e){ delete memoryStore[key]; }
+}
+
+// ---------- Fetch with a hard timeout so a stuck network call can never freeze the app ----------
+async function fetchWithTimeout(url, options, timeoutMs){
+  timeoutMs = timeoutMs || 6000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try{
+    return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------- Storage helpers ----------
+// Every value is stored wrapped as { value, updatedAt } — locally and remotely.
+// On read, whichever copy (local vs remote) has the newer timestamp wins, and if
+// local turns out to be newer, it gets pushed back up automatically. A slow or
+// flaky connection can delay a sync, but it can no longer silently erase a change.
+async function storeGet(key, fallback){
+  let localWrapped = null;
+  try{
+    const raw = safeLocalGet(key);
+    if(raw !== null) localWrapped = JSON.parse(raw);
+  }catch(e){ /* ignore corrupt local cache */ }
+
+  if(syncUrl){
+    try{
+      const res = await fetchWithTimeout(syncUrl.replace(/\/$/, '') + '/' + encodeURIComponent(key) + '.json');
+      const remote = await res.json();
+      if(remote !== null && remote !== undefined){
+        let remoteWrapped;
+        if(remote && typeof remote === 'object' && !Array.isArray(remote) && 'updatedAt' in remote && 'value' in remote){
+          remoteWrapped = remote;
+        } else {
+          remoteWrapped = { value: remote, updatedAt: 0 };
+        }
+        if(!localWrapped || remoteWrapped.updatedAt >= localWrapped.updatedAt){
+          safeLocalSet(key, JSON.stringify(remoteWrapped));
+          return remoteWrapped.value;
+        } else {
+          fetchWithTimeout(syncUrl.replace(/\/$/, '') + '/' + encodeURIComponent(key) + '.json', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(localWrapped)
+          }).catch(e => console.error('self-heal push failed', key, e));
+          return localWrapped.value;
+        }
+      }
+    }catch(e){
+      console.error('sync get failed (or timed out), falling back to local cache', key, e);
+    }
+  }
+  if(localWrapped) return localWrapped.value;
+  return fallback;
+}
+async function storeSet(key, value){
+  const wrapped = { value, updatedAt: Date.now() };
+  safeLocalSet(key, JSON.stringify(wrapped));
+  if(syncUrl){
+    try{
+      await fetchWithTimeout(syncUrl.replace(/\/$/, '') + '/' + encodeURIComponent(key) + '.json', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(wrapped)
+      });
+    }catch(e){
+      console.error('sync set failed (or timed out); local change is saved and will retry on next sync', key, e);
+    }
+  }
+}
+
+// Pull all shared keys fresh from the server and re-render if anything changed.
+async function pullRemoteUpdates(){
+  if(!syncUrl || syncing) return;
+  syncing = true;
+  try{
+    const [newCats, newTxns, newHistory, newWeek] = await Promise.all([
+      storeGet(STORE_KEY, categories),
+      storeGet(TXN_KEY, transactions),
+      storeGet(HISTORY_KEY, weekHistory),
+      storeGet(WEEK_KEY, weekStart)
+    ]);
+    const changed = JSON.stringify(newCats) !== JSON.stringify(categories) ||
+                     JSON.stringify(newTxns) !== JSON.stringify(transactions) ||
+                     JSON.stringify(newHistory) !== JSON.stringify(weekHistory);
+    categories = newCats;
+    transactions = newTxns;
+    weekHistory = newHistory;
+    weekStart = newWeek;
+    if(changed) render();
+  }catch(e){
+    console.error('pull failed', e);
+  }
+  syncing = false;
+}
+
+// ---------- Week logic (Fri–Thu) ----------
+function fridayOf(d){
+  const date = new Date(d);
+  const day = date.getDay(); // 0 Sun .. 6 Sat
+  const diff = (day - 5 + 7) % 7; // days since most recent Friday
+  date.setDate(date.getDate() - diff);
+  date.setHours(0,0,0,0);
+  return date;
+}
+function fmtDate(d){
+  const date = new Date(d);
+  if(isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+}
+function fmtMoney(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toFixed(2);
+}
+
+async function ensureCurrentWeek(){
+  const thisFriday = fridayOf(new Date()).toISOString();
+  let savedWeek = await storeGet(WEEK_KEY, null);
+
+  // Guard against a corrupted or malformed stored value — treat anything
+  // unparsable as "no saved week" rather than letting bad data crash the app.
+  if(savedWeek !== null){
+    const test = new Date(savedWeek);
+    if(isNaN(test.getTime())){
+      console.error('Ignoring invalid stored week-start value:', savedWeek);
+      savedWeek = null;
+    }
+  }
+
+  if(savedWeek !== null && savedWeek !== thisFriday){
+    // Week has turned over: archive the just-finished week, then reset spent
+    const endDate = new Date(savedWeek);
+    endDate.setDate(endDate.getDate() + 6);
+    const entry = {
+      id: 'wk_' + Date.now(),
+      weekStart: savedWeek,
+      weekEnd: endDate.toISOString(),
+      categories: categories.map(c => ({ name: c.name, budget: c.budget, spent: c.spent }))
+    };
+    weekHistory.unshift(entry);
+    weekHistory = weekHistory.slice(0, MAX_HISTORY_WEEKS);
+    await storeSet(HISTORY_KEY, weekHistory);
+
+    categories = categories.map(c => ({...c, spent: 0}));
+    weekStart = thisFriday;
+    await storeSet(WEEK_KEY, thisFriday);
+    await storeSet(STORE_KEY, categories);
+  } else {
+    weekStart = thisFriday;
+    await storeSet(WEEK_KEY, thisFriday);
+  }
+}
+
+// ---------- Init ----------
+async function init(){
+  syncUrl = safeLocalGet('ledger:sync-url') || null;
+
+  categories = await storeGet(STORE_KEY, null);
+  transactions = await storeGet(TXN_KEY, []);
+  weekHistory = await storeGet(HISTORY_KEY, []);
+
+  if(categories === null){
+    // First run: seed with Groceries example
+    categories = [{ id: 'cat_' + Date.now(), name: 'Groceries', budget: 525, spent: 0 }];
+    await storeSet(STORE_KEY, categories);
+  }
+
+  await ensureCurrentWeek();
+  render();
+
+  if(syncUrl){
+    setInterval(pullRemoteUpdates, 8000);
+    document.addEventListener('visibilitychange', () => {
+      if(document.visibilityState === 'visible') pullRemoteUpdates();
+    });
+  } else {
+    openSyncSetup(true);
+  }
+}
+
+// ---------- Rendering ----------
+function render(){
+  // Defensive normalization: bad/missing fields should never crash the app.
+  if(!Array.isArray(categories)) categories = [];
+  categories = categories
+    .filter(c => c && typeof c === 'object' && c.id)
+    .map(c => ({
+      id: c.id,
+      name: (typeof c.name === 'string' && c.name.trim()) ? c.name : 'Untitled',
+      budget: Number.isFinite(Number(c.budget)) ? Number(c.budget) : 0,
+      spent: Number.isFinite(Number(c.spent)) ? Number(c.spent) : 0
+    }));
+  if(!Array.isArray(transactions)) transactions = [];
+  if(!Array.isArray(weekHistory)) weekHistory = [];
+
+  const friday = new Date(weekStart);
+  const thursday = new Date(friday); thursday.setDate(thursday.getDate() + 6);
+  document.getElementById('weekLabel').textContent =
+    'Week of ' + fmtDate(friday) + ' – ' + fmtDate(thursday);
+
+  const main = document.getElementById('main');
+  main.innerHTML = '';
+
+  if(categories.length === 0){
+    main.innerHTML = '<div class="empty">No budgets yet. Add one below to get started.</div>';
+  }
+
+  categories.forEach(cat => {
+   try {
+    const remaining = cat.budget - cat.spent;
+    const pct = cat.budget > 0 ? Math.min(100, (cat.spent / cat.budget) * 100) : 0;
+    let barColor = 'var(--sage)', remClass = 'remaining-ok';
+    if(remaining < 0){ barColor = 'var(--coral)'; remClass = 'remaining-over'; }
+    else if(pct >= 80){ barColor = 'var(--gold)'; remClass = 'remaining-low'; }
+
+    const div = document.createElement('div');
+    div.className = 'category';
+    div.innerHTML = `
+      <div class="category-top">
+        <div class="category-name">${escapeHtml(cat.name)}</div>
+        <div class="category-remaining ${remClass}">${fmtMoney(remaining)}</div>
+      </div>
+
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${barColor};"></div></div>
+      <div class="category-sub">
+        <span>${fmtMoney(cat.spent)} spent</span>
+        <span>${fmtMoney(cat.budget)} budget</span>
+      </div>
+      <div class="category-actions">
+        <button class="btn btn-scan" data-action="scan" data-id="${cat.id}">Scan receipt</button>
+        <button class="btn btn-manual" data-action="manual" data-id="${cat.id}">Add manually</button>
+      </div>
+      <div style="margin-top:10px; text-align:right;">
+        <button class="btn-edit" data-action="edit" data-id="${cat.id}">Edit budget</button>
+      </div>
+    `;
+    main.appendChild(div);
+   } catch(e) {
+     console.error('Skipping a category that failed to render', cat, e);
+   }
+  });
+
+  const addRow = document.createElement('div');
+  addRow.className = 'add-category-row';
+  addRow.innerHTML = `<button data-action="add-category">+ Add a budget category</button>`;
+  main.appendChild(addRow);
+
+  // History
+  const histSection = document.createElement('div');
+  histSection.className = 'history';
+  histSection.innerHTML = '<h2>Recent activity</h2>';
+  if(transactions.length === 0){
+    histSection.innerHTML += '<div class="empty">No expenses logged yet.</div>';
+  } else {
+    const recent = [...transactions].sort((a,b)=> String(b.date).localeCompare(String(a.date))).slice(0, 25);
+    recent.forEach(t => {
+     try {
+      const row = document.createElement('div');
+      row.className = 'txn';
+      const cat = categories.find(c => c.id === t.categoryId);
+      row.innerHTML = `
+        <div class="txn-info">
+          <div class="txn-cat">${escapeHtml(cat ? cat.name : 'Deleted category')}</div>
+          <div class="txn-date">${fmtDate(t.date)}${t.source === 'scan' ? ' · scanned' : ''}</div>
+        </div>
+        <div>
+          <span class="txn-amt">${fmtMoney(Number(t.amount) || 0)}</span>
+          <button class="txn-del" data-action="delete-txn" data-id="${t.id}">undo</button>
+        </div>
+      `;
+      histSection.appendChild(row);
+     } catch(e) {
+       console.error('Skipping a transaction that failed to render', t, e);
+     }
+    });
+  }
+  main.appendChild(histSection);
+
+  // Weekly history (past weeks, Fri–Thu)
+  const weekSection = document.createElement('div');
+  weekSection.className = 'history';
+  weekSection.innerHTML = '<h2>Past weeks</h2>';
+  if(weekHistory.length === 0){
+    weekSection.innerHTML += '<div class="empty">Your first completed week will show up here.</div>';
+  } else {
+    weekHistory.forEach(entry => {
+     try {
+      const start = new Date(entry.weekStart);
+      const end = new Date(entry.weekEnd);
+      const card = document.createElement('div');
+      card.className = 'category';
+      const entryCategories = Array.isArray(entry.categories) ? entry.categories : [];
+      let rows = entryCategories.map(c => {
+        const budget = Number(c.budget) || 0;
+        const spent = Number(c.spent) || 0;
+        const rem = budget - spent;
+        const over = rem < 0;
+        return `<div class="category-sub" style="margin-bottom:4px;">
+          <span>${escapeHtml(c.name || 'Untitled')} — ${fmtMoney(spent)} of ${fmtMoney(budget)}</span>
+          <span style="color:${over ? 'var(--coral)' : 'var(--sage)'}">${over ? fmtMoney(rem) + ' over' : fmtMoney(rem) + ' left'}</span>
+        </div>`;
+      }).join('');
+      card.innerHTML = `
+        <div class="category-top">
+          <div class="category-name" style="font-size:14.5px;">${fmtDate(start)} – ${fmtDate(end)}</div>
+          <button class="btn-edit" data-action="delete-week" data-id="${entry.id}" style="color:var(--coral);">clear</button>
+        </div>
+        ${rows}
+      `;
+      weekSection.appendChild(card);
+     } catch(e) {
+       console.error('Skipping a past-week entry that failed to render', entry, e);
+     }
+    });
+  }
+  main.appendChild(weekSection);
+
+  const tip = document.createElement('footer');
+  tip.className = 'tip';
+  tip.innerHTML = `Add this page to your Home Screen for quick access. Budgets reset every Friday.<br>
+    <button data-action="sync-settings" style="background:none;border:none;color:var(--ink-soft);text-decoration:underline;font-family:inherit;font-size:11.5px;cursor:pointer;margin-top:6px;">
+      ${syncUrl ? 'Sync settings (connected)' : 'Set up sync with another phone'}
+    </button>`;
+  main.appendChild(tip);
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------- Event delegation ----------
+document.getElementById('main').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if(!btn) return;
+  const action = btn.dataset.action;
+  const id = btn.dataset.id;
+
+  if(action === 'scan'){
+    pendingCategoryId = id;
+    document.getElementById('cameraInput').click();
+  } else if(action === 'manual'){
+    openManualEntry(id);
+  } else if(action === 'edit'){
+    openEditCategory(id);
+  } else if(action === 'add-category'){
+    openAddCategory();
+  } else if(action === 'delete-txn'){
+    deleteTransaction(id);
+  } else if(action === 'delete-week'){
+    deleteWeek(id);
+  } else if(action === 'sync-settings'){
+    openSyncSetup(false);
+  }
+});
+
+async function deleteWeek(id){
+  weekHistory = weekHistory.filter(w => w.id !== id);
+  await storeSet(HISTORY_KEY, weekHistory);
+  render();
+}
+
+document.getElementById('cameraInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  pendingScanDataUrl = dataUrl;
+  openScanModal(dataUrl);
+});
+
+function fileToDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---------- Modals ----------
+function openModal(innerHtml){
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay';
+  overlay.id = 'overlay';
+  overlay.innerHTML = `<div class="sheet">${innerHtml}</div>`;
+  overlay.addEventListener('click', (e) => {
+    if(e.target.id === 'overlay') closeModal();
+  });
+  document.body.appendChild(overlay);
+}
+function closeModal(){
+  const el = document.getElementById('overlay');
+  if(el) el.remove();
+}
+
+function openSyncSetup(isFirstRun){
+  openModal(`
+    <h3>${isFirstRun ? 'Sync with your wife (optional)' : 'Sync settings'}</h3>
+    <div class="field">
+      <label>Firebase Realtime Database URL</label>
+      <input type="text" id="syncUrlInput" placeholder="https://your-project-default-rtdb.firebaseio.com" value="${syncUrl ? escapeHtml(syncUrl) : ''}">
+    </div>
+    <div class="detected-note">Enter the exact same URL on both phones to share one budget.</div>
+    <div class="sheet-actions">
+      <button class="btn btn-cancel" id="skipSync">${isFirstRun ? 'Skip for now' : 'Cancel'}</button>
+      <button class="btn btn-confirm" id="saveSync">Save & connect</button>
+    </div>
+    ${syncUrl ? '<div style="text-align:center; margin-top:14px;"><button class="btn-edit" id="disconnectSync" style="color:var(--coral);">Disconnect sync</button></div>' : ''}
+  `);
+  document.getElementById('skipSync').onclick = closeModal;
+  document.getElementById('saveSync').onclick = async () => {
+    const url = document.getElementById('syncUrlInput').value.trim();
+    if(!url) return;
+    const saveBtn = document.getElementById('saveSync');
+    saveBtn.textContent = 'Connecting…';
+    saveBtn.disabled = true;
+    syncUrl = url;
+    safeLocalSet('ledger:sync-url', url);
+    await storeSet(STORE_KEY, categories);
+    await storeSet(TXN_KEY, transactions);
+    await storeSet(HISTORY_KEY, weekHistory);
+    await storeSet(WEEK_KEY, weekStart);
+    await pullRemoteUpdates();
+    closeModal();
+    render();
+    setInterval(pullRemoteUpdates, 8000);
+    document.addEventListener('visibilitychange', () => {
+      if(document.visibilityState === 'visible') pullRemoteUpdates();
+    });
+  };
+  const disconnectBtn = document.getElementById('disconnectSync');
+  if(disconnectBtn){
+    disconnectBtn.onclick = () => {
+      syncUrl = null;
+      safeLocalRemove('ledger:sync-url');
+      closeModal();
+      render();
+    };
+  }
+}
+
+function openAddCategory(){
+  openModal(`
+    <h3>New budget category</h3>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="newCatName" placeholder="e.g. Groceries, Gas, Dining out">
+    </div>
+    <div class="field">
+      <label>Weekly budget</label>
+      <input type="number" id="newCatBudget" inputmode="decimal" placeholder="525">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-cancel" id="cancelAdd">Cancel</button>
+      <button class="btn btn-confirm" id="confirmAdd">Add category</button>
+    </div>
+  `);
+  document.getElementById('cancelAdd').onclick = closeModal;
+  document.getElementById('confirmAdd').onclick = async () => {
+    const name = document.getElementById('newCatName').value.trim();
+    const budget = parseFloat(document.getElementById('newCatBudget').value);
+    if(!name || isNaN(budget) || budget <= 0){ return; }
+    categories.push({ id: 'cat_' + Date.now(), name, budget, spent: 0 });
+    await storeSet(STORE_KEY, categories);
+    closeModal();
+    render();
+  };
+}
+
+function openEditCategory(id){
+  const cat = categories.find(c => c.id === id);
+  if(!cat) return;
+  openModal(`
+    <h3>Edit ${escapeHtml(cat.name)}</h3>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="editName" value="${escapeHtml(cat.name)}">
+    </div>
+    <div class="field">
+      <label>Weekly budget</label>
+      <input type="number" id="editBudget" inputmode="decimal" value="${cat.budget}">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-cancel" id="deleteCat" style="color:var(--coral); border-color:var(--coral);">Delete</button>
+      <button class="btn btn-confirm" id="saveCat">Save</button>
+    </div>
+  `);
+  document.getElementById('deleteCat').onclick = async () => {
+    categories = categories.filter(c => c.id !== id);
+    await storeSet(STORE_KEY, categories);
+    closeModal();
+    render();
+  };
+  document.getElementById('saveCat').onclick = async () => {
+    const name = document.getElementById('editName').value.trim();
+    const budget = parseFloat(document.getElementById('editBudget').value);
+    if(!name || isNaN(budget) || budget <= 0) return;
+    cat.name = name;
+    cat.budget = budget;
+    await storeSet(STORE_KEY, categories);
+    closeModal();
+    render();
+  };
+}
+
+function openManualEntry(id){
+  const cat = categories.find(c => c.id === id);
+  openModal(`
+    <h3>Add expense — ${escapeHtml(cat.name)}</h3>
+    <div class="field">
+      <label>Amount</label>
+      <input type="number" id="manualAmount" inputmode="decimal" placeholder="0.00" autofocus>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-cancel" id="cancelManual">Cancel</button>
+      <button class="btn btn-confirm" id="confirmManual">Deduct from budget</button>
+    </div>
+  `);
+  document.getElementById('cancelManual').onclick = closeModal;
+  document.getElementById('confirmManual').onclick = async () => {
+    const amt = parseFloat(document.getElementById('manualAmount').value);
+    if(isNaN(amt) || amt <= 0) return;
+    await recordExpense(id, amt, 'manual');
+    closeModal();
+    render();
+  };
+}
+
+function openScanModal(dataUrl){
+  openModal(`
+    <h3>Scanning receipt…</h3>
+    <img src="${dataUrl}" class="receipt-preview">
+    <div class="scan-status" id="scanStatus"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div>Reading the total…</div></div>
+  `);
+  runOcr(dataUrl);
+}
+
+async function runOcr(dataUrl){
+  try{
+    const result = await Tesseract.recognize(dataUrl, 'eng');
+    const text = result.data.text;
+    const amount = extractTotal(text);
+    showScanResult(dataUrl, amount);
+  }catch(err){
+    console.error('OCR failed', err);
+    showScanResult(dataUrl, null);
+  }
+}
+
+function extractTotal(text){
+  // Look for lines with "total" keyword and a dollar amount, prefer the last/largest such match
+  const lines = text.split('\n');
+  const moneyRe = /\$?\s?(\d{1,4}(?:[.,]\d{2}))/g;
+  let candidates = [];
+
+  lines.forEach(line => {
+    const lower = line.toLowerCase();
+    const isTotalLine = /\btotal\b/.test(lower) && !/subtotal/.test(lower);
+    let m;
+    moneyRe.lastIndex = 0;
+    while((m = moneyRe.exec(line)) !== null){
+      const val = parseFloat(m[1].replace(',', '.'));
+      if(!isNaN(val)){
+        candidates.push({ val, priority: isTotalLine ? 2 : 1 });
+      }
+    }
+  });
+
+  if(candidates.length === 0) return null;
+  // Prefer values found on "total" lines; among those, take the largest (grand total usually largest of total-line matches)
+  const totalLineVals = candidates.filter(c => c.priority === 2).map(c => c.val);
+  if(totalLineVals.length > 0){
+    return Math.max(...totalLineVals);
+  }
+  // Fallback: largest dollar amount anywhere on receipt
+  return Math.max(...candidates.map(c => c.val));
+}
+
+function showScanResult(dataUrl, amount){
+  const overlay = document.getElementById('overlay');
+  if(!overlay) return;
+  const cat = categories.find(c => c.id === pendingCategoryId);
+  const note = amount !== null
+    ? `<div class="detected-note">Detected total from receipt — check it looks right</div>`
+    : `<div class="detected-note warn">Couldn't read a total automatically — enter it manually</div>`;
+
+  overlay.querySelector('.sheet').innerHTML = `
+    <h3>Confirm expense — ${escapeHtml(cat.name)}</h3>
+    <img src="${dataUrl}" class="receipt-preview">
+    <div class="field">
+      <label>Amount</label>
+      <input type="number" id="scanAmount" inputmode="decimal" value="${amount !== null ? amount.toFixed(2) : ''}">
+    </div>
+    ${note}
+    <div class="sheet-actions">
+      <button class="btn btn-cancel" id="cancelScan">Cancel</button>
+      <button class="btn btn-confirm" id="confirmScan">Deduct from budget</button>
+    </div>
+  `;
+  document.getElementById('cancelScan').onclick = closeModal;
+  document.getElementById('confirmScan').onclick = async () => {
+    const amt = parseFloat(document.getElementById('scanAmount').value);
+    if(isNaN(amt) || amt <= 0) return;
+    await recordExpense(pendingCategoryId, amt, 'scan');
+    closeModal();
+    render();
+  };
+}
+
+async function recordExpense(categoryId, amount, source){
+  const cat = categories.find(c => c.id === categoryId);
+  if(!cat) return;
+  cat.spent += amount;
+  const txn = { id: 'txn_' + Date.now(), categoryId, amount, date: new Date().toISOString(), source };
+  transactions.push(txn);
+  await storeSet(STORE_KEY, categories);
+  await storeSet(TXN_KEY, transactions);
+}
+
+async function deleteTransaction(id){
+  const txn = transactions.find(t => t.id === id);
+  if(!txn) return;
+  const cat = categories.find(c => c.id === txn.categoryId);
+  if(cat) cat.spent = Math.max(0, cat.spent - txn.amount);
+  transactions = transactions.filter(t => t.id !== id);
+  await storeSet(STORE_KEY, categories);
+  await storeSet(TXN_KEY, transactions);
+  render();
+}
+
+function showFatalError(err){
+  const main = document.getElementById('main');
+  if(main){
+    main.innerHTML = `
+      <div style="background:#FBF8F1; border:1px solid var(--coral); border-radius:4px; padding:16px; margin-top:10px;">
+        <div style="font-weight:600; color:var(--coral); margin-bottom:8px;">Something went wrong loading the app</div>
+        <div style="font-family:'SF Mono',monospace; font-size:12px; color:var(--ink-soft); white-space:pre-wrap; word-break:break-word;">${escapeHtml(String(err && err.stack ? err.stack : err))}</div>
+        <div style="font-size:12.5px; color:var(--ink-soft); margin-top:12px;">Take a screenshot of this and send it over so it can be diagnosed.</div>
+      </div>`;
+  }
+}
+window.addEventListener('error', (e) => showFatalError(e.error || e.message));
+window.addEventListener('unhandledrejection', (e) => showFatalError(e.reason));
+
+init().catch(showFatalError);
+</script>
+</body>
+</html>
